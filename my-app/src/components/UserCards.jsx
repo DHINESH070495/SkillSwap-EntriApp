@@ -31,7 +31,7 @@ function UserCards() {
     return [];
   };
 
-  //  AI Match Percentage
+  // Match %
   const calculateMatchPercentage = (otherUser) => {
     const userHave = convertToArray(
       currentUser.skillsHave
@@ -65,17 +65,29 @@ function UserCards() {
     return Math.round((matches / total) * 100);
   };
 
-  // 🔹 Matching Logic
-  const matchedUsers = users.filter((u) => {
-    if (!currentUser || u.id === currentUser.id)
-      return false;
+  // All users except current
+  const allUsers = users.filter(
+    (u) => currentUser && u.id !== currentUser.id
+  );
 
-    return calculateMatchPercentage(u) > 0;
-  });
+  // Split users
+  const topMatches = allUsers
+    .filter((u) => calculateMatchPercentage(u) > 0)
+    .sort(
+      (a, b) =>
+        calculateMatchPercentage(b) -
+        calculateMatchPercentage(a)
+    );
 
-  // 🔍 Search + Sort by Match %
-  const filteredUsers = matchedUsers
-    .filter((user) => {
+  const otherUsers = allUsers.filter(
+    (u) => calculateMatchPercentage(u) === 0
+  );
+
+  // Search filter
+  const filterBySearch = (list) => {
+    return list.filter((user) => {
+      if (!search) return true;
+
       const allSkills = [
         ...convertToArray(user.skillsHave),
         ...convertToArray(user.skillsWant),
@@ -84,14 +96,16 @@ function UserCards() {
       return allSkills.some((skill) =>
         skill.includes(search.toLowerCase())
       );
-    })
-    .sort(
-      (a, b) =>
-        calculateMatchPercentage(b) -
-        calculateMatchPercentage(a)
-    );
+    });
+  };
 
-  //  Send Request
+  const filteredTopMatches =
+    filterBySearch(topMatches);
+
+  const filteredOtherUsers =
+    filterBySearch(otherUsers);
+
+  // Send Request
   const sendRequest = async (targetUser) => {
     try {
       const res = await axios.get(
@@ -127,11 +141,8 @@ function UserCards() {
     }
   };
 
-  //  Rating
-  const rateUser = async (
-    targetUser,
-    rating
-  ) => {
+  // Rating
+  const rateUser = async (targetUser, rating) => {
     try {
       const res = await axios.get(
         `${API}/${targetUser.id}`
@@ -158,10 +169,7 @@ function UserCards() {
       setUsers((prev) =>
         prev.map((u) =>
           u.id === targetUser.id
-            ? {
-                ...u,
-                ratings: updatedRatings,
-              }
+            ? { ...u, ratings: updatedRatings }
             : u
         )
       );
@@ -170,21 +178,114 @@ function UserCards() {
     }
   };
 
-  const getAverageRating = (
-    ratings = []
-  ) => {
+  const getAverageRating = (ratings = []) => {
     if (ratings.length === 0) return 0;
-
     return (
       ratings.reduce((a, b) => a + b, 0) /
       ratings.length
     ).toFixed(1);
   };
 
+  // Reusable Card
+  const renderCard = (user, isTopMatch) => {
+    const matchPercent =
+      calculateMatchPercentage(user);
+
+    return (
+      <div
+        key={user.id}
+        className={`bg-white shadow-lg rounded-2xl p-4 hover:scale-105 transition ${
+          isTopMatch ? "border-2 border-indigo-400" : ""
+        }`}
+      >
+        <h2 className="text-lg font-bold text-gray-800">
+          {user.name || user.email}
+        </h2>
+
+        {isTopMatch && (
+          <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-1 rounded-lg">
+            Best Match
+          </span>
+        )}
+
+        <p className="text-indigo-600 font-semibold mt-1">
+          Match: {matchPercent}%
+        </p>
+
+        <p className="mt-2 text-sm font-semibold text-green-600">
+          Skills Have:
+        </p>
+        <div className="flex flex-wrap gap-2 mt-1">
+          {convertToArray(user.skillsHave).map(
+            (skill, i) => (
+              <span
+                key={i}
+                className="bg-green-100 text-green-700 px-2 py-1 rounded-lg text-xs"
+              >
+                {skill}
+              </span>
+            )
+          )}
+        </div>
+
+        <p className="mt-3 text-sm font-semibold text-blue-600">
+          Skills Want:
+        </p>
+        <div className="flex flex-wrap gap-2 mt-1">
+          {convertToArray(user.skillsWant).map(
+            (skill, i) => (
+              <span
+                key={i}
+                className="bg-blue-100 text-blue-700 px-2 py-1 rounded-lg text-xs"
+              >
+                {skill}
+              </span>
+            )
+          )}
+        </div>
+
+        <p className="mt-3 text-sm font-semibold text-yellow-600">
+          Rating: {getAverageRating(user.ratings)} (
+          {user.ratings?.length || 0})
+        </p>
+
+        <div className="flex gap-2 mt-2">
+          {[1, 2, 3, 4, 5].map((star) => (
+            <button
+              key={star}
+              onClick={() =>
+                rateUser(user, star)
+              }
+              className="px-2 py-1 rounded-lg text-xs hover:bg-yellow-400"
+            >
+              {star}
+            </button>
+          ))}
+        </div>
+
+        <button
+          onClick={() =>
+            navigate(`/chat/${user.id}`)
+          }
+          className="mt-3 w-full bg-green-500 text-white py-2 rounded-lg hover:bg-green-600"
+        >
+          Chat
+        </button>
+
+        <button
+          onClick={() => sendRequest(user)}
+          className="mt-2 w-full bg-indigo-500 text-white py-2 rounded-lg hover:bg-indigo-600"
+        >
+          Send Request
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6">
 
-      {/* 🔍 SEARCH */}
+      {/* SEARCH */}
       <input
         type="text"
         placeholder="Search by skill..."
@@ -195,118 +296,38 @@ function UserCards() {
         className="mb-6 w-full p-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-400"
       />
 
-      {/* USER GRID */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* TOP MATCHES */}
+      <h2 className="text-xl font-bold mb-4 text-indigo-600">
+      Top Matches
+      </h2>
 
-        {filteredUsers.length === 0 && (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredTopMatches.length === 0 && (
           <p className="col-span-full text-center text-gray-500">
-            No matching users
+            No matches found
           </p>
         )}
 
-        {filteredUsers.map((user) => {
+        {filteredTopMatches.map((user) =>
+          renderCard(user, true)
+        )}
+      </div>
 
-          const matchPercent =
-            calculateMatchPercentage(user);
+      {/* OTHER USERS */}
+      <h2 className="text-xl font-bold mt-10 mb-4 text-gray-700">
+      Other Users
+      </h2>
 
-          return (
-            <div
-              key={user.id}
-              className="bg-white shadow-lg rounded-2xl p-4 hover:scale-105 transition"
-            >
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredOtherUsers.length === 0 && (
+          <p className="col-span-full text-center text-gray-500">
+            No users found
+          </p>
+        )}
 
-              <h2 className="text-lg font-bold text-gray-800">
-                {user.name || user.email}
-              </h2>
-
-              {/*  Match % */}
-              <p className="text-indigo-600 font-semibold mt-1">
-                Match: {matchPercent}%
-              </p>
-
-              {/* Skills Have */}
-              <p className="mt-2 text-sm font-semibold text-green-600">
-                Skills Have:
-              </p>
-
-              <div className="flex flex-wrap gap-2 mt-1">
-                {convertToArray(
-                  user.skillsHave
-                ).map((skill, i) => (
-                  <span
-                    key={i}
-                    className="bg-green-100 text-green-700 px-2 py-1 rounded-lg text-xs"
-                  >
-                    {skill}
-                  </span>
-                ))}
-              </div>
-
-              {/* Skills Want */}
-              <p className="mt-3 text-sm font-semibold text-blue-600">
-                Skills Want:
-              </p>
-
-              <div className="flex flex-wrap gap-2 mt-1">
-                {convertToArray(
-                  user.skillsWant
-                ).map((skill, i) => (
-                  <span
-                    key={i}
-                    className="bg-blue-100 text-blue-700 px-2 py-1 rounded-lg text-xs"
-                  >
-                    {skill}
-                  </span>
-                ))}
-              </div>
-
-              {/*  Rating */}
-              <p className="mt-3 text-sm font-semibold text-yellow-600">
-                Rating: {" "}
-                {getAverageRating(user.ratings)} (
-                {user.ratings?.length || 0})
-              </p>
-
-              {/* Rate Buttons */}
-              <div className="flex gap-2 mt-2">
-                {[1,2,3,4,5].map((star) => (
-                  <button
-                    key={star}
-                    onClick={() =>
-                      rateUser(user, star)
-                    }
-                    className="px-2 py-1 rounded-lg text-xs hover:bg-yellow-400"
-                  >
-                    {star}
-                  </button>
-                ))}
-              </div>
-
-              {/* Chat */}
-              <button
-                onClick={() =>
-                  navigate(`/chat/${user.id}`)
-                }
-                className="mt-3 w-full bg-green-500 text-white py-2 rounded-lg hover:bg-green-600"
-              >
-                Chat
-              </button>
-
-              {/* Request */}
-              <button
-                onClick={() =>
-                  sendRequest(user)
-                }
-                className="mt-2 w-full bg-indigo-500 text-white py-2 rounded-lg hover:bg-indigo-600"
-              >
-                Send Request
-              </button>
-
-            </div>
-          );
-
-        })}
-
+        {filteredOtherUsers.map((user) =>
+          renderCard(user, false)
+        )}
       </div>
     </div>
   );
